@@ -1,7 +1,13 @@
 <template>
   <div class="excel-table">
-    <div v-if="selectedFormula" class="formula-bar">
-      Selected Formula: {{ selectedFormula }}
+    <div v-if="selectedFormula !== null" class="formula-bar">
+      <span>Selected Formula: </span>
+      <input 
+        v-model="selectedFormula" 
+        @keyup.enter="updateFormula"
+        @blur="updateFormula"
+        class="formula-input"
+      />
     </div>
     <h2>Excel-like Table</h2>
     <DataTable :value="displayData" editMode="cell" @cell-edit-complete="onCellEditComplete" class="editable-cells-table">
@@ -40,6 +46,7 @@ export default defineComponent({
     ])
 
     const selectedFormula = ref(null)
+    const selectedCell = ref(null)
 
     const getCellDisplayValue = (value) => {
       if (typeof value === 'string' && value.startsWith('=')) {
@@ -87,13 +94,18 @@ export default defineComponent({
     const onCellClick = (rowIndex, column) => {
       if (column === 'C') {
         const cellValue = tableData[rowIndex][column]
-        if (typeof cellValue === 'string' && cellValue.startsWith('=')) {
-          selectedFormula.value = cellValue
-        } else {
-          selectedFormula.value = null
-        }
+        selectedFormula.value = cellValue
+        selectedCell.value = { rowIndex, column }
       } else {
         selectedFormula.value = null
+        selectedCell.value = null
+      }
+    }
+
+    const updateFormula = () => {
+      if (selectedCell.value) {
+        const { rowIndex, column } = selectedCell.value
+        tableData[rowIndex][column] = selectedFormula.value
       }
     }
 
@@ -104,6 +116,7 @@ export default defineComponent({
       getCellDisplayValue,
       selectedFormula,
       onCellClick,
+      updateFormula,
     }
   },
 })
@@ -121,6 +134,15 @@ export default defineComponent({
   background-color: #f0f0f0;
   padding: 10px;
   margin-bottom: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+.formula-input {
+  flex-grow: 1;
+  margin-left: 10px;
+  padding: 5px;
   border: 1px solid #ccc;
   border-radius: 4px;
 }

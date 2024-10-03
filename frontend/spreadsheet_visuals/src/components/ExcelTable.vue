@@ -5,6 +5,10 @@
       <button @click="uploadFile" :disabled="!file">Upload</button>
     </div>
 
+    <div v-if="error" class="error-message">
+      {{ error }}
+    </div>
+
     <div v-if="selectedFormula !== null" class="formula-bar">
       <span>Selected Formula: </span>
       <input 
@@ -39,28 +43,20 @@ import axios from 'axios'
 export default defineComponent({
   name: 'ExcelTable',
   setup() {
+    const columns = ref([])
+    const tableData = reactive([])
     const parser = new Parser()
-    const columns = ref(['A', 'B', 'C'])
-    const tableData = reactive([
-      { A: 1, B: 2, C: '=A1+B1' },
-      { A: 3, B: 4, C: '=A2*B2' },
-      { A: 5, B: 6, C: '=SUM(A1:B2)' },
-      { A: 10, B: 20, C: '=AVERAGE(A1:A4)' },
-      { A: 7, B: 8, C: '=MAX(B1:B5)' },
-      { A: '=A4-A3', B: '=B4/B3', C: '=IF(A6>B6, "A is larger", "B is larger or equal")' },
-      { A: 2, B: 3, C: '=POWER(A7,B7)' },
-    ])
-
     const file = ref(null)
+    const error = ref(null)
 
     const handleFileUpload = (event) => {
       file.value = event.target.files[0]
+      error.value = null  // Clear any previous errors
     }
 
     const uploadFile = async () => {
-      console.log("In upload file");
       if (!file.value) return
-      console.log(`file value = ${file.value}`)
+      
       const formData = new FormData()
       formData.append('file', file.value)
 
@@ -71,13 +67,24 @@ export default defineComponent({
           }
         })
         console.log('File uploaded successfully:', response.data)
-        // TODO: Update tableData with the response data
+        
+        // Update tableData and columns with the response data
+        if (response.data && response.data.data) {
+          tableData.splice(0, tableData.length, ...response.data.data)
+          columns.value = response.data.column_names
+        }
       } catch (error) {
         console.error('Error uploading file:', error)
+        error.value = "Error uploading file. Please try again."
       }
     }
 
-
+    const displayData = computed(() => {
+      return tableData.map((row, index) => ({
+        ...row,
+        index
+      }))
+    })
 
     const selectedFormula = ref(null)
     const selectedCell = ref(null)
@@ -113,27 +120,16 @@ export default defineComponent({
       done(fragment)
     })
 
-    const displayData = computed(() => {
-      return tableData.map((row, index) => ({
-        ...row,
-        index
-      }))
-    })
-
+   
     const onCellEditComplete = (event) => {
       const { newValue, index, field } = event
       tableData[index][field] = newValue
     }
 
     const onCellClick = (rowIndex, column) => {
-      if (column === 'C') {
-        const cellValue = tableData[rowIndex][column]
-        selectedFormula.value = cellValue
-        selectedCell.value = { rowIndex, column }
-      } else {
-        selectedFormula.value = null
-        selectedCell.value = null
-      }
+      const cellValue = tableData[rowIndex][column]
+      selectedFormula.value = typeof cellValue === 'string' && cellValue.startsWith('=') ? cellValue : null
+      selectedCell.value = selectedFormula.value ? { rowIndex, column } : null
     }
 
     const updateFormula = () => {
@@ -154,6 +150,7 @@ export default defineComponent({
       handleFileUpload,
       uploadFile,
       file,
+      error,
     }
   },
 })
@@ -188,5 +185,9 @@ export default defineComponent({
 }
 .file-upload input[type="file"] {
   margin-right: 1rem;
+}
+.error-message {
+  color: red;
+  margin-bottom: 1rem;
 }
 </style>

@@ -1,5 +1,10 @@
 <template>
   <div class="excel-table">
+    <div class="file-upload">
+      <input type="file" @change="handleFileUpload" accept=".xlsx,.csv" />
+      <button @click="uploadFile" :disabled="!file">Upload</button>
+    </div>
+
     <div v-if="selectedFormula !== null" class="formula-bar">
       <span>Selected Formula: </span>
       <input 
@@ -29,6 +34,7 @@
 <script>
 import { defineComponent, ref, computed, reactive } from 'vue'
 import { Parser } from 'hot-formula-parser'
+import axios from 'axios'  
 
 export default defineComponent({
   name: 'ExcelTable',
@@ -44,6 +50,34 @@ export default defineComponent({
       { A: '=A4-A3', B: '=B4/B3', C: '=IF(A6>B6, "A is larger", "B is larger or equal")' },
       { A: 2, B: 3, C: '=POWER(A7,B7)' },
     ])
+
+    const file = ref(null)
+
+    const handleFileUpload = (event) => {
+      file.value = event.target.files[0]
+    }
+
+    const uploadFile = async () => {
+      console.log("In upload file");
+      if (!file.value) return
+      console.log(`file value = ${file.value}`)
+      const formData = new FormData()
+      formData.append('file', file.value)
+
+      try {
+        const response = await axios.post('http://localhost:8000/upload-excel/', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        })
+        console.log('File uploaded successfully:', response.data)
+        // TODO: Update tableData with the response data
+      } catch (error) {
+        console.error('Error uploading file:', error)
+      }
+    }
+
+
 
     const selectedFormula = ref(null)
     const selectedCell = ref(null)
@@ -117,6 +151,9 @@ export default defineComponent({
       selectedFormula,
       onCellClick,
       updateFormula,
+      handleFileUpload,
+      uploadFile,
+      file,
     }
   },
 })
@@ -145,5 +182,11 @@ export default defineComponent({
   padding: 5px;
   border: 1px solid #ccc;
   border-radius: 4px;
+}
+.file-upload {
+  margin-bottom: 1rem;
+}
+.file-upload input[type="file"] {
+  margin-right: 1rem;
 }
 </style>

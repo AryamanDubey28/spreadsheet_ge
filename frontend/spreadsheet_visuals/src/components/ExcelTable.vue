@@ -2,11 +2,14 @@
   <div class="excel-table">
     <div class="file-upload">
       <input type="file" @change="handleFileUpload" accept=".xlsx,.csv" />
-      <button @click="uploadFile" :disabled="!file">Upload</button>
     </div>
 
     <div v-if="error" class="error-message">
       {{ error }}
+    </div>
+
+    <div v-if="loading" class="loading-message">
+      Loading and uploading file...
     </div>
 
     <div v-if="selectedFormula !== null" class="formula-bar">
@@ -38,7 +41,8 @@
 <script>
 import { defineComponent, ref, computed, reactive } from 'vue'
 import { Parser } from 'hot-formula-parser'
-import axios from 'axios'  
+import axios from 'axios'
+import * as XLSX from 'xlsx'
 
 export default defineComponent({
   name: 'ExcelTable',
@@ -46,19 +50,70 @@ export default defineComponent({
     const columns = ref([])
     const tableData = reactive([])
     const parser = new Parser()
-    const file = ref(null)
     const error = ref(null)
+    const loading = ref(false)
 
-    const handleFileUpload = (event) => {
-      file.value = event.target.files[0]
-      error.value = null  // Clear any previous errors
+    const handleFileUpload = async (event) => {
+      const file = event.target.files[0]
+      if (!file) return
+
+      error.value = null
+      loading.value = true
+
+      try {
+        await readAndUploadFile(file)
+      } catch (err) {
+        console.error('Error processing file:', err)
+        error.value = "Error processing and uploading file. Please try again."
+      } finally {
+        loading.value = false
+      }
     }
 
-    const uploadFile = async () => {
-      if (!file.value) return
+    const readAndUploadFile = async (file) => {
+      // Read and parse the file
+      const fileData = await readFile(file)
       
+      // Update frontend data
+      columns.value = fileData.columns
+      tableData.splice(0, tableData.length, ...fileData.data)
+
+      // Upload to backend
+      await uploadFile(file)
+    }
+
+    const readFile = (file) => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          try {
+            const result_data = new Uint8Array(e.target.result)
+            const workbook = XLSX.read(result_data, { type: 'array' })
+            const firstSheetName = workbook.SheetNames[0]
+            const worksheet = workbook.Sheets[firstSheetName]
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+            
+            const columns = jsonData[0]
+            const data = jsonData.slice(1).map(row => {
+              return columns.reduce((obj, key, index) => {
+                obj[key] = row[index]
+                return obj
+              }, {})
+            })
+
+            resolve({ columns, data })
+          } catch (error) {
+            reject(error)
+          }
+        }
+        reader.onerror = reject
+        reader.readAsArrayBuffer(file)
+      })
+    }
+
+    const uploadFile = async (file) => {
       const formData = new FormData()
-      formData.append('file', file.value)
+      formData.append('file', file)
 
       try {
         const response = await axios.post('http://localhost:8000/upload-excel/', formData, {
@@ -67,15 +122,8 @@ export default defineComponent({
           }
         })
         console.log('File uploaded successfully:', response.data)
-        
-        // Update tableData and columns with the response data
-        if (response.data && response.data.data) {
-          tableData.splice(0, tableData.length, ...response.data.data)
-          columns.value = response.data.column_names
-        }
       } catch (error) {
-        console.error('Error uploading file:', error)
-        error.value = "Error uploading file. Please try again."
+        throw new Error('Error uploading file to server: ' + error.message)
       }
     }
 
@@ -120,7 +168,6 @@ export default defineComponent({
       done(fragment)
     })
 
-   
     const onCellEditComplete = (event) => {
       const { newValue, index, field } = event
       tableData[index][field] = newValue
@@ -148,9 +195,8 @@ export default defineComponent({
       onCellClick,
       updateFormula,
       handleFileUpload,
-      uploadFile,
-      file,
       error,
+      loading,
     }
   },
 })
@@ -183,11 +229,12 @@ export default defineComponent({
 .file-upload {
   margin-bottom: 1rem;
 }
-.file-upload input[type="file"] {
-  margin-right: 1rem;
-}
 .error-message {
   color: red;
+  margin-bottom: 1rem;
+}
+.loading-message {
+  color: blue;
   margin-bottom: 1rem;
 }
 </style>

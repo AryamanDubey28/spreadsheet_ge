@@ -12,33 +12,36 @@
       Loading and uploading file...
     </div>
 
-    <div v-if="sheets">
-      <TabView v-model:activeIndex="activeTabIndex">
+    <div v-if="sheets" class="sheet-container">
+      <div class="sheet-content">
+        <div v-if="selectedFormula !== null" class="formula-bar">
+          <span>Selected Formula: </span>
+          <input 
+            v-model="selectedFormula" 
+            @keyup.enter="updateFormula"
+            @blur="updateFormula"
+            class="formula-input"
+          />
+        </div>
+        
+        <h2>{{ currentSheetName }}</h2>
+        <DataTable :value="currentSheet.data" editMode="cell" @cell-edit-complete="onCellEditComplete" class="editable-cells-table">
+          <Column v-for="col in currentSheet.column_names" :key="col" :field="col">
+            <template #header>{{ col }}</template>
+            <template #body="slotProps">
+              <div @click="onCellClick(slotProps.index, col)">
+                {{ getCellDisplayValue(slotProps.data[col]) }}
+              </div>
+            </template>
+            <template #editor="{ data, field }">
+              <InputText v-model="data[field]" />
+            </template>
+          </Column>
+        </DataTable>
+      </div>
+      
+      <TabView v-model:activeIndex="activeTabIndex" class="sheet-tabs">
         <TabPanel v-for="(sheet, sheetName) in sheets" :key="sheetName" :header="sheetName">
-          <div v-if="selectedFormula !== null" class="formula-bar">
-            <span>Selected Formula: </span>
-            <input 
-              v-model="selectedFormula" 
-              @keyup.enter="updateFormula"
-              @blur="updateFormula"
-              class="formula-input"
-            />
-          </div>
-          
-          <h2>{{ sheetName }}</h2>
-          <DataTable :value="sheet.data" editMode="cell" @cell-edit-complete="onCellEditComplete" class="editable-cells-table">
-            <Column v-for="col in sheet.column_names" :key="col" :field="col">
-              <template #header>{{ col }}</template>
-              <template #body="slotProps">
-                <div @click="onCellClick(slotProps.index, col, sheetName)">
-                  {{ getCellDisplayValue(slotProps.data[col]) }}
-                </div>
-              </template>
-              <template #editor="{ data, field }">
-                <InputText v-model="data[field]" />
-              </template>
-            </Column>
-          </DataTable>
         </TabPanel>
       </TabView>
     </div>
@@ -60,6 +63,16 @@ export default defineComponent({
     const activeTabIndex = ref(0)
     const selectedFormula = ref(null)
     const selectedCell = ref(null)
+
+    const currentSheetName = computed(() => {
+      if (!sheets.value) return ''
+      return Object.keys(sheets.value)[activeTabIndex.value]
+    })
+
+    const currentSheet = computed(() => {
+      if (!sheets.value || !currentSheetName.value) return { data: [], column_names: [] }
+      return sheets.value[currentSheetName.value]
+    })
 
     const handleFileUpload = async (event) => {
       const file = event.target.files[0]
@@ -108,22 +121,18 @@ export default defineComponent({
     }
 
     parser.on('callCellValue', function(cellCoord, done) {
-      const sheetName = Object.keys(sheets.value)[activeTabIndex.value]
-      const sheet = sheets.value[sheetName]
       const rowIndex = cellCoord.row.index
       const colIndex = cellCoord.column.index
-      const cellValue = sheet.data[rowIndex][sheet.column_names[colIndex]]
+      const cellValue = currentSheet.value.data[rowIndex][currentSheet.value.column_names[colIndex]]
       done(cellValue)
     })
 
     parser.on('callRangeValue', function(startCellCoord, endCellCoord, done) {
-      const sheetName = Object.keys(sheets.value)[activeTabIndex.value]
-      const sheet = sheets.value[sheetName]
       const fragment = []
       for (let row = startCellCoord.row.index; row <= endCellCoord.row.index; row++) {
         const rowData = []
         for (let col = startCellCoord.column.index; col <= endCellCoord.column.index; col++) {
-          rowData.push(sheet.data[row][sheet.column_names[col]])
+          rowData.push(currentSheet.value.data[row][currentSheet.value.column_names[col]])
         }
         fragment.push(rowData)
       }
@@ -132,26 +141,27 @@ export default defineComponent({
 
     const onCellEditComplete = (event) => {
       const { newValue, index, field } = event
-      const sheetName = Object.keys(sheets.value)[activeTabIndex.value]
-      sheets.value[sheetName].data[index][field] = newValue
+      currentSheet.value.data[index][field] = newValue
     }
 
-    const onCellClick = (rowIndex, column, sheetName) => {
-      const cellValue = sheets.value[sheetName].data[rowIndex][column]
+    const onCellClick = (rowIndex, column) => {
+      const cellValue = currentSheet.value.data[rowIndex][column]
       selectedFormula.value = typeof cellValue === 'string' && cellValue.startsWith('=') ? cellValue : null
-      selectedCell.value = selectedFormula.value ? { rowIndex, column, sheetName } : null
+      selectedCell.value = selectedFormula.value ? { rowIndex, column } : null
     }
 
     const updateFormula = () => {
       if (selectedCell.value) {
-        const { rowIndex, column, sheetName } = selectedCell.value
-        sheets.value[sheetName].data[rowIndex][column] = selectedFormula.value
+        const { rowIndex, column } = selectedCell.value
+        currentSheet.value.data[rowIndex][column] = selectedFormula.value
       }
     }
 
     return {
       activeTabIndex,
       sheets,
+      currentSheetName,
+      currentSheet,
       onCellEditComplete,
       getCellDisplayValue,
       selectedFormula,
@@ -168,6 +178,27 @@ export default defineComponent({
 <style scoped>
 .excel-table {
   margin-top: 2rem;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 2rem); /* Adjust based on your layout */
+}
+.sheet-container {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  overflow: hidden;
+}
+.sheet-content {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding-bottom: 1rem;
+}
+.sheet-tabs {
+  flex-shrink: 0;
+}
+.editable-cells-table ::v-deep(.p-datatable-wrapper) {
+  overflow-y: auto;
+  max-height: calc(100vh - 200px); /* Adjust based on your layout */
 }
 .editable-cells-table ::v-deep(.p-cell-editing) {
   padding-top: 0 !important;

@@ -8,11 +8,9 @@ import InputText from 'primevue/inputtext'
 import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
 
-// Import PrimeVue styles
+
 import 'primevue/resources/primevue.min.css'
 import 'primeicons/primeicons.css'
-
-// Import a PrimeVue theme (you can choose a different theme if you prefer)
 import 'primevue/resources/themes/lara-light-blue/theme.css'
 
 import App from './App.vue'

@@ -43,7 +43,6 @@ async def upload_excel(file: UploadFile = File(...)):
             }
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format")
-        print(f"response = {response}")
         return response
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not process file: {str(e)}")

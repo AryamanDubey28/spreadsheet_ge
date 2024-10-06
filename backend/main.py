@@ -7,7 +7,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Adjust this to match your Vue.js dev server
+    allow_origins=["http://localhost:5173"], # Adjust this to match your Vue.js dev server
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -16,26 +16,35 @@ app.add_middleware(
 @app.post("/upload-excel/")
 async def upload_excel(file: UploadFile = File(...)):
     contents = await file.read()
-    
     try:
         if file.filename.endswith('.xlsx'):
-            df = pd.read_excel(BytesIO(contents))
+            xls = pd.ExcelFile(BytesIO(contents))
+            sheets_data = {}
+            for sheet_name in xls.sheet_names:
+                df = pd.read_excel(xls, sheet_name=sheet_name)
+                sheets_data[sheet_name] = {
+                    "column_names": df.columns.tolist(),
+                    "data": df.to_dict(orient='records')
+                }
+            response = {
+                "sheets": sheets_data,
+                "sheet_names": xls.sheet_names
+            }
         elif file.filename.endswith('.csv'):
             df = pd.read_csv(BytesIO(contents))
+            response = {
+                "sheets": {
+                    "Sheet1": {
+                        "column_names": df.columns.tolist(),
+                        "data": df.to_dict(orient='records')
+                    }
+                },
+                "sheet_names": ["Sheet1"]
+            }
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format")
-        
-        # Convert DataFrame to list of dictionaries
-        data = df.to_dict(orient='records')
-        
-        # Prepare the response
-        response = {
-            "column_names": df.columns.tolist(),
-            "data": data
-        }
-        
+        print(f"response = {response}")
         return response
-    
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not process file: {str(e)}")
 

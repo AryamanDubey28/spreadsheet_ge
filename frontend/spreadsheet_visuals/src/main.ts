@@ -5,6 +5,8 @@ import PrimeVue from 'primevue/config'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputText from 'primevue/inputtext'
+import TabView from 'primevue/tabview'
+import TabPanel from 'primevue/tabpanel'
 
 // Import PrimeVue styles
 import 'primevue/resources/primevue.min.css'
@@ -25,5 +27,7 @@ app.use(PrimeVue)
 app.component('DataTable', DataTable)
 app.component('Column', Column)
 app.component('InputText', InputText)
+app.component('TabView', TabView);
+app.component('TabPanel', TabPanel);
 
 app.mount('#app')

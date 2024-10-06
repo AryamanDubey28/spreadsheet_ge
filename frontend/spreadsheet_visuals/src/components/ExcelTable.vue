@@ -12,46 +12,54 @@
       Loading and uploading file...
     </div>
 
-    <div v-if="selectedFormula !== null" class="formula-bar">
-      <span>Selected Formula: </span>
-      <input 
-        v-model="selectedFormula" 
-        @keyup.enter="updateFormula"
-        @blur="updateFormula"
-        class="formula-input"
-      />
-    </div>
-    <h2>Excel-like Table</h2>
-    <DataTable :value="displayData" editMode="cell" @cell-edit-complete="onCellEditComplete" class="editable-cells-table">
-      <Column v-for="col in columns" :key="col" :field="col">
-        <template #header>{{ col }}</template>
-        <template #body="slotProps">
-          <div @click="onCellClick(slotProps.data.index, col)">
-            {{ getCellDisplayValue(slotProps.data[col]) }}
+    <div v-if="sheets">
+      <TabView v-model:activeIndex="activeTabIndex">
+        <TabPanel v-for="(sheet, sheetName) in sheets" :key="sheetName" :header="sheetName">
+          <div v-if="selectedFormula !== null" class="formula-bar">
+            <span>Selected Formula: </span>
+            <input 
+              v-model="selectedFormula" 
+              @keyup.enter="updateFormula"
+              @blur="updateFormula"
+              class="formula-input"
+            />
           </div>
-        </template>
-        <template #editor="{ data, field }">
-          <InputText v-model="data[field]" />
-        </template>
-      </Column>
-    </DataTable>
+          
+          <h2>{{ sheetName }}</h2>
+          <DataTable :value="sheet.data" editMode="cell" @cell-edit-complete="onCellEditComplete" class="editable-cells-table">
+            <Column v-for="col in sheet.column_names" :key="col" :field="col">
+              <template #header>{{ col }}</template>
+              <template #body="slotProps">
+                <div @click="onCellClick(slotProps.index, col, sheetName)">
+                  {{ getCellDisplayValue(slotProps.data[col]) }}
+                </div>
+              </template>
+              <template #editor="{ data, field }">
+                <InputText v-model="data[field]" />
+              </template>
+            </Column>
+          </DataTable>
+        </TabPanel>
+      </TabView>
+    </div>
   </div>
 </template>
 
 <script>
-import { defineComponent, ref, computed, reactive } from 'vue'
+import { defineComponent, ref, computed } from 'vue'
 import { Parser } from 'hot-formula-parser'
 import axios from 'axios'
-import * as XLSX from 'xlsx'
 
 export default defineComponent({
   name: 'ExcelTable',
   setup() {
-    const columns = ref([])
-    const tableData = reactive([])
     const parser = new Parser()
     const error = ref(null)
     const loading = ref(false)
+    const sheets = ref(null)
+    const activeTabIndex = ref(0)
+    const selectedFormula = ref(null)
+    const selectedCell = ref(null)
 
     const handleFileUpload = async (event) => {
       const file = event.target.files[0]
@@ -61,54 +69,13 @@ export default defineComponent({
       loading.value = true
 
       try {
-        await readAndUploadFile(file)
+        await uploadFile(file)
       } catch (err) {
         console.error('Error processing file:', err)
         error.value = "Error processing and uploading file. Please try again."
       } finally {
         loading.value = false
       }
-    }
-
-    const readAndUploadFile = async (file) => {
-      // Read and parse the file
-      const fileData = await readFile(file)
-      
-      // Update frontend data
-      columns.value = fileData.columns
-      tableData.splice(0, tableData.length, ...fileData.data)
-
-      // Upload to backend
-      await uploadFile(file)
-    }
-
-    const readFile = (file) => {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = (e) => {
-          try {
-            const result_data = new Uint8Array(e.target.result)
-            const workbook = XLSX.read(result_data, { type: 'array' })
-            const firstSheetName = workbook.SheetNames[0]
-            const worksheet = workbook.Sheets[firstSheetName]
-            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
-            
-            const columns = jsonData[0]
-            const data = jsonData.slice(1).map(row => {
-              return columns.reduce((obj, key, index) => {
-                obj[key] = row[index]
-                return obj
-              }, {})
-            })
-
-            resolve({ columns, data })
-          } catch (error) {
-            reject(error)
-          }
-        }
-        reader.onerror = reject
-        reader.readAsArrayBuffer(file)
-      })
     }
 
     const uploadFile = async (file) => {
@@ -121,21 +88,12 @@ export default defineComponent({
             'Content-Type': 'multipart/form-data'
           }
         })
-        console.log('File uploaded successfully:', response.data)
+        sheets.value = response.data.sheets
+        activeTabIndex.value = 0
       } catch (error) {
         throw new Error('Error uploading file to server: ' + error.message)
       }
     }
-
-    const displayData = computed(() => {
-      return tableData.map((row, index) => ({
-        ...row,
-        index
-      }))
-    })
-
-    const selectedFormula = ref(null)
-    const selectedCell = ref(null)
 
     const getCellDisplayValue = (value) => {
       if (typeof value === 'string' && value.startsWith('=')) {
@@ -150,18 +108,22 @@ export default defineComponent({
     }
 
     parser.on('callCellValue', function(cellCoord, done) {
+      const sheetName = Object.keys(sheets.value)[activeTabIndex.value]
+      const sheet = sheets.value[sheetName]
       const rowIndex = cellCoord.row.index
       const colIndex = cellCoord.column.index
-      const cellValue = tableData[rowIndex][columns.value[colIndex]]
+      const cellValue = sheet.data[rowIndex][sheet.column_names[colIndex]]
       done(cellValue)
     })
 
     parser.on('callRangeValue', function(startCellCoord, endCellCoord, done) {
+      const sheetName = Object.keys(sheets.value)[activeTabIndex.value]
+      const sheet = sheets.value[sheetName]
       const fragment = []
       for (let row = startCellCoord.row.index; row <= endCellCoord.row.index; row++) {
         const rowData = []
         for (let col = startCellCoord.column.index; col <= endCellCoord.column.index; col++) {
-          rowData.push(tableData[row][columns.value[col]])
+          rowData.push(sheet.data[row][sheet.column_names[col]])
         }
         fragment.push(rowData)
       }
@@ -170,25 +132,26 @@ export default defineComponent({
 
     const onCellEditComplete = (event) => {
       const { newValue, index, field } = event
-      tableData[index][field] = newValue
+      const sheetName = Object.keys(sheets.value)[activeTabIndex.value]
+      sheets.value[sheetName].data[index][field] = newValue
     }
 
-    const onCellClick = (rowIndex, column) => {
-      const cellValue = tableData[rowIndex][column]
+    const onCellClick = (rowIndex, column, sheetName) => {
+      const cellValue = sheets.value[sheetName].data[rowIndex][column]
       selectedFormula.value = typeof cellValue === 'string' && cellValue.startsWith('=') ? cellValue : null
-      selectedCell.value = selectedFormula.value ? { rowIndex, column } : null
+      selectedCell.value = selectedFormula.value ? { rowIndex, column, sheetName } : null
     }
 
     const updateFormula = () => {
       if (selectedCell.value) {
-        const { rowIndex, column } = selectedCell.value
-        tableData[rowIndex][column] = selectedFormula.value
+        const { rowIndex, column, sheetName } = selectedCell.value
+        sheets.value[sheetName].data[rowIndex][column] = selectedFormula.value
       }
     }
 
     return {
-      columns,
-      displayData,
+      activeTabIndex,
+      sheets,
       onCellEditComplete,
       getCellDisplayValue,
       selectedFormula,

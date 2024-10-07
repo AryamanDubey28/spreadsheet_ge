@@ -22,6 +22,9 @@
             @blur="updateFormula"
             class="formula-input"
           />
+          <button @click="cancelFormulaEdit" class="cancel-button">
+            <span class="cancel-icon">×</span>
+          </button>
         </div>
         
         <h2>{{ currentSheetName }}</h2>
@@ -110,55 +113,53 @@ export default defineComponent({
     }
 
     const setupParser = () => {
-    parser.on('callCellValue', function(cellCoord, done) {
-    const rowIndex = cellCoord.row.index - 1  // Subtract 1 from the row index
-    const colIndex = cellCoord.column.index   // Column index is already 0-based
-    
-    if (rowIndex < 0 || rowIndex >= currentSheetData.value.length ||
-        colIndex < 0 || colIndex >= currentColumns.value.length) {
-      // Return an appropriate value for out-of-bounds cells
-      return done(null);
-    }
-
-    let cellValue = currentSheetData.value[rowIndex][currentColumns.value[colIndex]]
-    // Convert to number if possible
-    if (!isNaN(cellValue) && cellValue !== '') {
-      cellValue = Number(cellValue)
-    }
-    console.log(`At row ${rowIndex + 1} col ${currentColumns.value[colIndex]}, cellvalue = ${cellValue}`)
-    done(cellValue)
-  })
-
-  parser.on('callRangeValue', function(startCellCoord, endCellCoord, done) {
-    const fragment = []
-    for (let row = startCellCoord.row.index - 1; row <= endCellCoord.row.index - 1; row++) {
-      const rowData = []
-      for (let col = startCellCoord.column.index; col <= endCellCoord.column.index; col++) {
-        if (row >= 0 && row < currentSheetData.value.length &&
-            col >= 0 && col < currentColumns.value.length) {
-          rowData.push(currentSheetData.value[row][currentColumns.value[col]])
-        } else {
-          rowData.push(null)  // or any appropriate value for out-of-bounds cells
+      parser.on('callCellValue', function(cellCoord, done) {
+        const rowIndex = cellCoord.row.index - 1
+        const colIndex = cellCoord.column.index
+        
+        if (rowIndex < 0 || rowIndex >= currentSheetData.value.length ||
+            colIndex < 0 || colIndex >= currentColumns.value.length) {
+          return done(null);
         }
-      }
-      fragment.push(rowData)
+
+        let cellValue = currentSheetData.value[rowIndex][currentColumns.value[colIndex]]
+        if (!isNaN(cellValue) && cellValue !== '') {
+          cellValue = Number(cellValue)
+        }
+        console.log(`At row ${rowIndex + 1} col ${currentColumns.value[colIndex]}, cellvalue = ${cellValue}`)
+        done(cellValue)
+      })
+
+      parser.on('callRangeValue', function(startCellCoord, endCellCoord, done) {
+        const fragment = []
+        for (let row = startCellCoord.row.index - 1; row <= endCellCoord.row.index - 1; row++) {
+          const rowData = []
+          for (let col = startCellCoord.column.index; col <= endCellCoord.column.index; col++) {
+            if (row >= 0 && row < currentSheetData.value.length &&
+                col >= 0 && col < currentColumns.value.length) {
+              rowData.push(currentSheetData.value[row][currentColumns.value[col]])
+            } else {
+              rowData.push(null)
+            }
+          }
+          fragment.push(rowData)
+        }
+        done(fragment)
+      })
     }
-    done(fragment)
-  })
-}
 
     const getCellDisplayValue = (value) => {
-  if (typeof value === 'string' && value.startsWith('=')) {
-    return evaluateFormula(value)
-  }
-  return value
-}
+      if (typeof value === 'string' && value.startsWith('=')) {
+        return evaluateFormula(value)
+      }
+      return value
+    }
 
-const evaluateFormula = (formula) => {
-  const result = parser.parse(formula.slice(1)) 
-  console.log(`formula = ${formula.slice(1)} result = ${JSON.stringify(result)}`)
-  return result.error ? result.error : result.result
-}
+    const evaluateFormula = (formula) => {
+      const result = parser.parse(formula.slice(1)) 
+      console.log(`formula = ${formula.slice(1)} result = ${JSON.stringify(result)}`)
+      return result.error ? result.error : result.result
+    }
 
     const onCellEditComplete = (event) => {
       const { newValue, index, field } = event
@@ -166,16 +167,21 @@ const evaluateFormula = (formula) => {
     }
 
     const onCellClick = (rowIndex, column) => {
-  selectedCell.value = { rowIndex: rowIndex + 1, column }  // Add 1 to rowIndex
-  const cellValue = currentSheetData.value[rowIndex][column]
-  editingFormula.value = cellValue
-}
+      selectedCell.value = { rowIndex: rowIndex + 1, column }
+      const cellValue = currentSheetData.value[rowIndex][column]
+      editingFormula.value = cellValue
+    }
 
     const updateFormula = () => {
       if (selectedCell.value) {
         const { rowIndex, column } = selectedCell.value
-        currentSheetData.value[rowIndex][column] = editingFormula.value
+        currentSheetData.value[rowIndex - 1][column] = editingFormula.value
       }
+      selectedCell.value = null
+      editingFormula.value = ''
+    }
+
+    const cancelFormulaEdit = () => {
       selectedCell.value = null
       editingFormula.value = ''
     }
@@ -195,7 +201,8 @@ const evaluateFormula = (formula) => {
       onCellEditComplete,
       getCellDisplayValue,
       onCellClick,
-      updateFormula
+      updateFormula,
+      cancelFormulaEdit
     }
   },
 })
@@ -250,9 +257,26 @@ const evaluateFormula = (formula) => {
 .formula-input {
   flex-grow: 1;
   margin-left: 0.5rem;
+  margin-right: 0.5rem;
   padding: 0.25rem;
   border: 1px solid #ccc;
   border-radius: 4px;
+}
+
+.cancel-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 0 0.5rem;
+}
+
+.cancel-icon {
+  color: #888;
+}
+
+.cancel-icon:hover {
+  color: #333;
 }
 
 .editable-cells-table {
